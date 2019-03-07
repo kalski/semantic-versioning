@@ -190,5 +190,18 @@ public class VersionTest {
 
         version.next(null);
     }
+    
+    @Test
+    public void shouldBeEqualToSelfParsed() {
+        final int major = 1;
+        final int minor = 2;
+        final int patch = 3;
+        final String separator = ".";
+        final String special = "DEV-SNAPSHOT";
+        final Version version = new Version(major, minor, patch, separator, special);
+    
+        final Version parsed = Version.parse(version.toString());
+        Assert.assertEquals(version, parsed);
+    }
 
 }

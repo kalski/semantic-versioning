@@ -16,6 +16,7 @@
  */
 package org.semver;
 
+import java.util.Arrays;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -215,6 +216,9 @@ public final class Version implements Comparable<Version> {
 
       abstract public int compareTo(IntId other);
       abstract public int compareTo(StringId other);
+      
+      abstract public int hashCode();
+      abstract public boolean equals(Object obj);
     }
 
     private static class StringId extends SpecialId {
@@ -243,7 +247,36 @@ public final class Version implements Comparable<Version> {
       }
       @Override
       public int compareTo(StringId other) {
+        if (equals(other)) {
+          return 0;
+        }
+        
         return id.compareTo(other.id);
+      }
+      
+      @Override
+      public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((id == null) ? 0 : id.hashCode());
+        return result;
+      }
+      
+      @Override
+      public boolean equals(Object obj) {
+        if (this == obj)
+          return true;
+        if (obj == null)
+          return false;
+        if (getClass() != obj.getClass())
+          return false;
+        StringId other = (StringId) obj;
+        if (id == null) {
+          if (other.id != null)
+            return false;
+        } else if (!id.equals(other.id))
+          return false;
+        return true;
       }
     }
 
@@ -268,6 +301,10 @@ public final class Version implements Comparable<Version> {
 
       @Override
       public int compareTo(IntId other) {
+        if (equals(other)) {
+          return 0;
+        }
+        
         return id - other.id;
       }
       @Override
@@ -275,6 +312,29 @@ public final class Version implements Comparable<Version> {
         //Numeric identifiers always have lower precedence than non-numeric identifiers.
         return -1;
       }
+      
+      @Override
+      public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + id;
+        return result;
+      }
+      
+      @Override
+      public boolean equals(Object obj) {
+        if (this == obj)
+          return true;
+        if (obj == null)
+          return false;
+        if (getClass() != obj.getClass())
+          return false;
+        IntId other = (IntId) obj;
+        if (id != other.id)
+          return false;
+        return true;
+      }
+      
     }
 
     private static class Special implements Comparable<Special> {
@@ -297,6 +357,10 @@ public final class Version implements Comparable<Version> {
 
       @Override
       public int compareTo(Special other) {
+        if (equals(other)) {
+          return 0;
+        }
+        
         int min = Math.min(other.ids.length, ids.length);
         for (int i = 0; i < min; i++) {
           int c = ids[i].compareTo(other.ids[i]);
@@ -313,6 +377,28 @@ public final class Version implements Comparable<Version> {
           }
         }
         return 0;
+      }
+
+      @Override
+      public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + Arrays.hashCode(ids);
+        return result;
+      }
+
+      @Override
+      public boolean equals(Object obj) {
+        if (this == obj)
+          return true;
+        if (obj == null)
+          return false;
+        if (getClass() != obj.getClass())
+          return false;
+        Special other = (Special) obj;
+        if (!Arrays.equals(ids, other.ids))
+          return false;
+        return true;
       }
 
       @Override
