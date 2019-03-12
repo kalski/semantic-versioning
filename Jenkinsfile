@@ -1,7 +1,7 @@
 @Library('jenkins-shared-libraries') _
 
-def SERVER_ID  = 'carlspring-oss-snapshots'
-def DEPLOY_SERVER_URL = 'https://repo.carlspring.org/content/repositories/carlspring-oss-snapshots/'
+def SERVER_ID  = 'carlspring'
+def SNAPSHOT_SERVER_URL = 'https://repo.carlspring.org/content/repositories/carlspring-oss-snapshots/'
 def PR_SERVER_URL = 'https://repo.carlspring.org/content/repositories/carlspring-oss-pull-requests/'
 
 // Notification settings for "master" and "branch/pr"
@@ -14,6 +14,12 @@ pipeline {
             label 'alpine:jdk8-mvn-3.5'
             customWorkspace workspace().getUniqueWorkspacePath()
         }
+    }
+    environment {
+        // Use Pipeline Utility Steps plugin to read information from pom.xml into env variables
+        GROUP_ID = readMavenPom().getGroupId()
+        ARTIFACT_ID = readMavenPom().getArtifactId()
+        VERSION = readMavenPom().getVersion()
     }
     parameters {
         booleanParam(defaultValue: true, description: 'Send email notification?', name: 'NOTIFY_EMAIL')
@@ -32,7 +38,7 @@ pipeline {
         stage('Build')
         {
             steps {
-                withMavenPlus(mavenLocalRepo: workspace().getM2LocalRepoPath(), mavenSettingsConfig: 'a5452263-40e5-4d71-a5aa-4fc94a0e6833')
+                withMavenPlus(timestamps: true, mavenLocalRepo: workspace().getM2LocalRepoPath(), mavenSettingsConfig: '67aaee2b-ca74-4ae1-8eb9-c8f16eb5e534')
                 {
                     sh "mvn -U clean install -Dmaven.test.failure.ignore=true"
                 }
@@ -40,105 +46,42 @@ pipeline {
         }
         stage('Deploy') {
             when {
-                expression { (currentBuild.result == null || currentBuild.result == 'SUCCESS') }
+                expression {
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    (
+                            BRANCH_NAME == 'master' ||
+                            env.VERSION.contains("PR-${env.CHANGE_ID}") ||
+                            env.VERSION.contains(BRANCH_NAME)
+                    )
+                }
             }
             steps {
                 script {
                     withMavenPlus(mavenLocalRepo: workspace().getM2LocalRepoPath(), mavenSettingsConfig: 'a5452263-40e5-4d71-a5aa-4fc94a0e6833')
                     {
+                        echo "Deploying " + GROUP_ID + ":" + ARTIFACT_ID + ":" + VERSION
 
-                        def SERVER_URL;
+                        def SERVER_URL
 
-                        if (BRANCH_NAME == 'master') {
-                            echo "Deploying master..."
-                            SERVER_URL = DEPLOY_SERVER_URL;
-
-                            // We are temporarily reverting back.
-                            sh "mvn deploy" +
-                               " -DskipTests" +
-                               " -DaltDeploymentRepository=${SERVER_ID}::default::${DEPLOY_SERVER_URL}"
-
-                            def APPROVE_RELEASE=false
-                            def APPROVED_BY=""
-
-                            try {
-                                timeout(time: 15, unit: 'MINUTES')
-                                {
-                                    rocketSend attachments: [[
-                                         authorIcon: 'https://jenkins.carlspring.org/static/fd850815/images/headshot.png',
-                                         authorName: 'Jenkins',
-                                         color: '#f4bc0d',
-                                         text: 'Job is pending release approval! If no action is taken within 15 minutes, it will abort releasing.',
-                                         title: env.JOB_NAME + ' #' + env.BUILD_NUMBER,
-                                         titleLink: env.BUILD_URL
-                                    ]], message: '', rawMessage: true, channel: '#strongbox-devs'
-
-                                    APPROVE_RELEASE = input message: 'Do you want to release and deploy this version?',
-                                                            submitter: 'administrators,strongbox,strongbox-pro'
-                                }
-                            }
-                            catch(err)
-                            {
-                                APPROVE_RELEASE = false
-                            }
-
-                            if(APPROVE_RELEASE == true || APPROVE_RELEASE.equals(null))
-                            {
-                                echo "Preparing GPG keys..."
-                                sh "gpg --list-secret-keys"
-                                sh "gpg --import ${8E3885CCF99DE3E178C55F32CEE144B17ECAC99A}"
-                                sh "gpg --list-secret-keys"
-
-                                echo "Set upstream branch..."
-                                sh "git branch --set-upstream-to=origin/master master"
-
-                                echo "Preparing release and tag..."
-                                sh "mvn -B release:clean release:prepare"
-
-                                def releaseProperties = readProperties(file: "release.properties");
-                                def RELEASE_VERSION = releaseProperties["scm.tag"]
-
-                                echo "Deploying " + RELEASE_VERSION
-
-                                sh "mvn -B release:perform -DserverId=${SERVER_ID} -DdeployUrl=${RELEASE_SERVER_URL}"
-                            }
-                            else
-                            {
-                                echo "Deployment has been skipped, because it was not approved."
-                            }
-
-                        } else {
-                            echo "Deploying branch/PR"
-
-                            def pom = readMavenPom file: 'pom.xml'
-	                        def VERSION_ID = pom.version
-
-                          	def gitBranch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
-
-                            SERVER_URL = PR_SERVER_URL;
-                            VERSION_ID = VERSION_ID.replaceAll("-SNAPSHOT", "") + "-${GIT_BRANCH}";
-
-                            sh "mvn versions:set -DnewVersion=${VERSION_ID}-SNAPSHOT"
-                            sh "mvn versions:commit"
+                        if (BRANCH_NAME == 'master')
+                        {
+                            SERVER_URL = SNAPSHOT_SERVER_URL
+                        }
+                        else
+                        {
+                            SERVER_URL = PR_SERVER_URL
                         }
 
-                        sh "mvn package deploy:deploy" +
-                           " -Drat.ignoreErrors=true" +
-                           " -Dmaven.test.skip=true" +
+                        sh "mvn jar:jar deploy:deploy" +
+                           " -Dmaven.test.failure.ignore=true" +
                            " -DaltDeploymentRepository=${SERVER_ID}::default::${SERVER_URL}"
+
                     }
                 }
             }
         }
     }
     post {
-        success {
-            script {
-                if(BRANCH_NAME == 'master' && params.TRIGGER_OS_BUILD) {
-                    build job: "strongbox/strongbox", wait: false, parameters: [[$class: 'StringParameterValue', name: 'REVISION', value: '*/master']]
-                }
-            }
-        }
         failure {
             script {
                 if(params.NOTIFY_EMAIL) {
