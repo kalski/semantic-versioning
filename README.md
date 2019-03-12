@@ -1,6 +1,6 @@
-_This library is in dormant state and won't add any new feature. You might want to consider [japicmd](https://github.com/siom79/japicmp) instead._ 
+# Semantic Versioning 
 
-![CI status](https://secure.travis-ci.org/jeluard/semantic-versioning.png)
+[![Build Status](https://jenkins.carlspring.org/buildStatus/icon?job=strongbox%2Fsemantic-versioning%2Fmaster)](https://jenkins.carlspring.org/job/strongbox/view/dependencies/job/semantic-versioning/job/master/)
 
 Version number changes implications are not always clearly identified. Can I be sure this new minor version didn't break the public API? 
 As a library writer, how to continuously validate I don't break binary compatibility?
